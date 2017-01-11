@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
 	"os/exec"
 	"runtime"
 
-	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 )
 
@@ -21,7 +21,7 @@ func main() {
 		fmt.Println(err)
 	}
 	var codeChannel chan string
-	codeChannel, err = startHTTPWebServer(config.RedirectURL)
+	codeChannel, err = startWebServer(config.RedirectURL)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -29,10 +29,20 @@ func main() {
 	url := config.AuthCodeURL("dsadsadasdasd", accessType)
 	openURL(url)
 	code := <-codeChannel
-	_, err = config.Exchange(context.Background(), code)
+	context := context.Background()
+	token, err := config.Exchange(context, code)
+	if err != nil {
+		fmt.Println(err)
+	}
+	client := config.Client(context, token)
+	resp, err := client.Get("https://www.googleapis.com/youtube/v3/channels")
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(resp.Body)
 }
 
-func startHTTPWebServer(listenURI string) (codeCh chan string, err error) {
+func startWebServer(listenURI string) (codeCh chan string, err error) {
 	codeCh = make(chan string)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		code := r.FormValue("code")
@@ -40,13 +50,7 @@ func startHTTPWebServer(listenURI string) (codeCh chan string, err error) {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Received code: %v\r\nYou can now safely close this browser window.", code)
 	})
-	go func() {
-		err = http.ListenAndServe(":9090", nil) // set listen port
-		if err != nil {
-			fmt.Printf("Cannot start web server on %v", listenURI)
-			panic(err)
-		}
-	}()
+	go http.ListenAndServe(":9090", nil)
 	return codeCh, nil
 }
 
